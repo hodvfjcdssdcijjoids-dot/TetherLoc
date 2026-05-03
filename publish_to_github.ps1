@@ -103,13 +103,11 @@ if ($remotes -contains "origin") {
     & git remote set-url origin $remoteUrl
 }
 else {
-    & $gh repo view $repoFullName *> $null
-    if ($LASTEXITCODE -eq 0) {
+    $visibility = if ($Public) { "--public" } else { "--private" }
+    & $gh repo create $repoFullName $visibility --source $Root --remote origin
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Repo creation did not complete. If the repo already exists, adding it as origin..." -ForegroundColor Yellow
         & git remote add origin $remoteUrl
-    }
-    else {
-        $visibility = if ($Public) { "--public" } else { "--private" }
-        & $gh repo create $repoFullName $visibility --source $Root --remote origin
     }
 }
 
