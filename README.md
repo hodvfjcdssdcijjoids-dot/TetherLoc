@@ -1,5 +1,7 @@
 # TetherLoc
 
+> **Administrator required:** Run TetherLoc from an Administrator PowerShell window. iOS 17+ developer tunneling may fail without elevated access, and the app will stop at an admin-required screen if it is launched normally.
+
 TetherLoc is a small Windows-friendly desktop wrapper for iOS location simulation on your own connected iPhone or iPad. It uses Apple Mobile Device Support from iTunes for USB pairing/discovery and delegates device communication to `pymobiledevice3`.
 
 ## What It Does
