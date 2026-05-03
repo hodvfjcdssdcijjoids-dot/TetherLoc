@@ -19,6 +19,7 @@ from .backend import (
     PymobiledeviceClient,
     clean_command_output,
     format_location_command_error,
+    is_running_as_admin,
     is_developer_image_mount_failure,
 )
 from .routing import (
@@ -263,6 +264,11 @@ class TetherLocApp(tk.Tk):
         self.setup_detail = tk.StringVar(value="Looking for Apple drivers and a USB iPhone.")
 
         self._configure_style()
+        if not is_running_as_admin():
+            self._show_admin_required_screen()
+            self.protocol("WM_DELETE_WINDOW", self._on_close)
+            return
+
         self._show_setup_screen(
             "Checking setup",
             "Looking for Apple drivers, pymobiledevice3, and a trusted USB iPhone.",
@@ -348,6 +354,28 @@ class TetherLocApp(tk.Tk):
             arrowcolor=MUTED,
             relief="flat",
         )
+        style.layout(
+            "Clean.Vertical.TScrollbar",
+            [
+                (
+                    "Vertical.Scrollbar.trough",
+                    {
+                        "sticky": "ns",
+                        "children": [
+                            ("Vertical.Scrollbar.thumb", {"expand": "1", "sticky": "nswe"}),
+                        ],
+                    },
+                )
+            ],
+        )
+        style.configure(
+            "Clean.Vertical.TScrollbar",
+            background="#3A3E49",
+            troughcolor=SURFACE,
+            bordercolor=SURFACE,
+            relief="flat",
+            width=10,
+        )
 
     def _build_ui(self) -> None:
         for row in range(3):
@@ -369,7 +397,12 @@ class TetherLocApp(tk.Tk):
 
         self.side_canvas = tk.Canvas(sidebar, bg=SURFACE, bd=0, highlightthickness=0)
         self.side_canvas.grid(row=0, column=0, sticky="nsew")
-        side_scrollbar = ttk.Scrollbar(sidebar, orient="vertical", command=self.side_canvas.yview)
+        side_scrollbar = ttk.Scrollbar(
+            sidebar,
+            orient="vertical",
+            command=self.side_canvas.yview,
+            style="Clean.Vertical.TScrollbar",
+        )
         side_scrollbar.grid(row=0, column=1, sticky="ns")
         self.side_canvas.configure(yscrollcommand=side_scrollbar.set)
 
@@ -456,6 +489,100 @@ class TetherLocApp(tk.Tk):
         for widget in (sidebar, status_chip, connection_chip, self.route_summary_card, map_actions, zoom_actions):
             widget.lift()
         self._set_connection_state(bool(self.devices))
+
+    def _show_admin_required_screen(self) -> None:
+        self._clear_root()
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(0, weight=1)
+
+        frame = tk.Frame(self, bg=BG)
+        frame.grid(row=0, column=0, sticky="nsew")
+        frame.columnconfigure(0, weight=1)
+        frame.rowconfigure(0, weight=1)
+
+        card = tk.Frame(frame, bg=SURFACE, highlightbackground=BORDER, highlightthickness=1)
+        card.grid(row=0, column=0, sticky="", padx=28, pady=28)
+        card.columnconfigure(0, weight=1)
+
+        tk.Label(
+            card,
+            text="Administrator Required",
+            bg=SURFACE,
+            fg=TEXT,
+            font=("Segoe UI", 24, "bold"),
+        ).grid(row=0, column=0, sticky="w", padx=26, pady=(24, 6))
+        tk.Label(
+            card,
+            text=(
+                "TetherLoc needs Administrator rights before it can prepare the iOS developer tunnel. "
+                "Close this window, open PowerShell as Administrator, return to this folder, and rerun setup."
+            ),
+            bg=SURFACE,
+            fg=MUTED,
+            font=("Segoe UI", 10),
+            wraplength=600,
+            justify="left",
+        ).grid(row=1, column=0, sticky="w", padx=26, pady=(0, 18))
+
+        command = "powershell -ExecutionPolicy Bypass -File .\\run.ps1"
+        command_box = tk.Frame(card, bg=INPUT_BG, highlightbackground="#273645", highlightthickness=1)
+        command_box.grid(row=2, column=0, sticky="ew", padx=26, pady=(0, 18))
+        command_box.columnconfigure(0, weight=1)
+        tk.Label(
+            command_box,
+            text=command,
+            bg=INPUT_BG,
+            fg=ACCENT,
+            font=("Cascadia Mono", 10, "bold"),
+            anchor="w",
+        ).grid(row=0, column=0, sticky="ew", padx=14, pady=12)
+
+        tk.Label(
+            card,
+            text=(
+                "If you are using the installed app instead of the source folder, close it and start TetherLoc "
+                "with Run as administrator."
+            ),
+            bg=SURFACE,
+            fg=SECONDARY_HOVER,
+            font=("Segoe UI", 9),
+            wraplength=600,
+            justify="left",
+        ).grid(row=3, column=0, sticky="w", padx=26, pady=(0, 20))
+
+        actions = tk.Frame(card, bg=SURFACE)
+        actions.grid(row=4, column=0, sticky="ew", padx=26, pady=(0, 24))
+        actions.columnconfigure(0, weight=1)
+        actions.columnconfigure(1, weight=1)
+        RoundedButton(
+            actions,
+            "Copy Command",
+            lambda: self._copy_text(command, "Admin command copied"),
+            bg=ACCENT,
+            fg="#061216",
+            active_bg=ACCENT_HOVER,
+            outline=ACCENT,
+            radius=18,
+            height=44,
+            min_width=150,
+        ).grid(row=0, column=0, sticky="ew", padx=(0, 8))
+        RoundedButton(
+            actions,
+            "Close TetherLoc",
+            self.destroy,
+            bg=SURFACE_ALT,
+            fg=TEXT,
+            active_bg="#2A2D36",
+            outline=BORDER,
+            radius=18,
+            height=44,
+            min_width=150,
+        ).grid(row=0, column=1, sticky="ew", padx=(8, 0))
+
+    def _copy_text(self, text: str, status: str = "Copied") -> None:
+        self.clipboard_clear()
+        self.clipboard_append(text)
+        self.status.set(status)
 
     def _adjust_zoom(self, delta: int) -> None:
         if not self.map_widget:
@@ -913,6 +1040,78 @@ class TetherLocApp(tk.Tk):
             padx=(0 if column == 0 else 6, 6 if column == 0 else 0),
         )
 
+    def _number_stepper(
+        self,
+        parent: tk.Widget,
+        variable: tk.Variable,
+        minimum: float,
+        maximum: float,
+        increment: float,
+        row: int,
+        column: int,
+        width: int = 7,
+        sticky: str = "ew",
+        padx=0,
+        pady=0,
+    ) -> tk.Frame:
+        shell = tk.Frame(parent, bg=INPUT_BG, highlightbackground=BORDER, highlightthickness=1)
+        shell.grid(row=row, column=column, sticky=sticky, padx=padx, pady=pady)
+        shell.columnconfigure(0, weight=1)
+
+        entry = tk.Entry(
+            shell,
+            textvariable=variable,
+            width=width,
+            justify="center",
+            bg=INPUT_BG,
+            fg=TEXT,
+            insertbackground=TEXT,
+            relief="flat",
+            bd=0,
+            font=("Segoe UI", 10, "bold"),
+        )
+        entry.grid(row=0, column=0, sticky="ew", padx=(10, 4), pady=8)
+
+        controls = tk.Frame(shell, bg=INPUT_BG)
+        controls.grid(row=0, column=1, sticky="e", padx=(0, 6), pady=5)
+        self._mini_step_button(
+            controls,
+            "-",
+            lambda: self._step_number(variable, minimum, maximum, -increment),
+            column=0,
+        )
+        self._mini_step_button(
+            controls,
+            "+",
+            lambda: self._step_number(variable, minimum, maximum, increment),
+            column=1,
+        )
+        return shell
+
+    def _mini_step_button(self, parent: tk.Widget, text: str, command, column: int) -> None:
+        RoundedButton(
+            parent,
+            text=text,
+            command=command,
+            bg="#262933",
+            fg=TEXT,
+            active_bg="#343844",
+            outline="#3A3E49",
+            radius=10,
+            height=28,
+            padx=4,
+            font=("Segoe UI", 10, "bold"),
+            min_width=28,
+        ).grid(row=0, column=column, padx=(0 if column == 0 else 4, 0))
+
+    def _step_number(self, variable: tk.Variable, minimum: float, maximum: float, delta: float) -> None:
+        try:
+            current = float(variable.get())
+        except (TypeError, ValueError, tk.TclError):
+            current = minimum
+        value = max(minimum, min(maximum, current + delta))
+        variable.set(round(value, 3))
+
     def _flat_button(
         self,
         parent: tk.Widget,
@@ -1138,14 +1337,19 @@ class TetherLocApp(tk.Tk):
         self._field_label(details, 0, 0, "Taxi MPH")
         self._field_label(details, 0, 1, "Board Sec")
         self._field_label(details, 0, 2, "Smooth Sec")
-        ttk.Spinbox(details, from_=5, to=45, increment=1, textvariable=self.flight_taxi_mph, width=6).grid(
-            row=1, column=0, sticky="ew", padx=(0, 6), pady=(4, 0)
-        )
-        ttk.Spinbox(details, from_=0, to=180, increment=5, textvariable=self.flight_board_seconds, width=6).grid(
-            row=1, column=1, sticky="ew", padx=6, pady=(4, 0)
-        )
-        ttk.Spinbox(details, from_=1, to=30, increment=1, textvariable=self.flight_interval_seconds, width=6).grid(
-            row=1, column=2, sticky="ew", padx=(6, 0), pady=(4, 0)
+        self._number_stepper(details, self.flight_taxi_mph, 5, 45, 1, row=1, column=0, width=5, padx=(0, 6), pady=(4, 0))
+        self._number_stepper(details, self.flight_board_seconds, 0, 180, 5, row=1, column=1, width=5, padx=6, pady=(4, 0))
+        self._number_stepper(
+            details,
+            self.flight_interval_seconds,
+            1,
+            30,
+            1,
+            row=1,
+            column=2,
+            width=5,
+            padx=(6, 0),
+            pady=(4, 0),
         )
 
         stats = tk.Frame(flight, bg=SURFACE)
@@ -1291,12 +1495,8 @@ class TetherLocApp(tk.Tk):
         timing.columnconfigure(1, weight=1)
         self._field_label(timing, 0, 0, "Smooth Sec")
         self._field_label(timing, 0, 1, "Stop Delay")
-        ttk.Spinbox(timing, from_=0.5, to=10, increment=0.5, textvariable=self.interval_seconds, width=8).grid(
-            row=1, column=0, sticky="ew", padx=(0, 6), pady=(4, 0)
-        )
-        ttk.Spinbox(timing, from_=1, to=10, increment=1, textvariable=self.stop_seconds, width=8).grid(
-            row=1, column=1, sticky="ew", padx=(6, 0), pady=(4, 0)
-        )
+        self._number_stepper(timing, self.interval_seconds, 0.5, 10, 0.5, row=1, column=0, padx=(0, 6), pady=(4, 0))
+        self._number_stepper(timing, self.stop_seconds, 1, 10, 1, row=1, column=1, padx=(6, 0), pady=(4, 0))
 
         stats = tk.Frame(route_section, bg=SURFACE)
         stats.grid(row=8, column=0, sticky="ew", pady=(12, 12))
@@ -1444,19 +1644,13 @@ class TetherLocApp(tk.Tk):
             row=3, column=0, sticky="w", padx=(0, 8)
         )
         ttk.Label(roadtrip, text="Smooth Sec", style="Muted.Panel.TLabel").grid(row=3, column=1, sticky="w", padx=(8, 0))
-        ttk.Spinbox(roadtrip, from_=1, to=120, increment=1, textvariable=self.mph, width=8).grid(
-            row=4, column=0, sticky="ew", padx=(0, 8), pady=(4, 10)
-        )
-        ttk.Spinbox(roadtrip, from_=0.5, to=10, increment=0.5, textvariable=self.interval_seconds, width=8).grid(
-            row=4, column=1, sticky="ew", padx=(8, 0), pady=(4, 10)
-        )
+        self._number_stepper(roadtrip, self.mph, 1, 120, 1, row=4, column=0, padx=(0, 8), pady=(4, 10))
+        self._number_stepper(roadtrip, self.interval_seconds, 0.5, 10, 0.5, row=4, column=1, padx=(8, 0), pady=(4, 10))
 
         ttk.Checkbutton(roadtrip, text="Pause at stop signs", variable=self.stop_signs).grid(
             row=5, column=0, sticky="w", pady=(0, 10)
         )
-        ttk.Spinbox(roadtrip, from_=1, to=10, increment=1, textvariable=self.stop_seconds, width=8).grid(
-            row=5, column=1, sticky="e", pady=(0, 10)
-        )
+        self._number_stepper(roadtrip, self.stop_seconds, 1, 10, 1, row=5, column=1, sticky="e", pady=(0, 10))
 
         stats = ttk.Frame(roadtrip, style="Panel.TFrame")
         stats.grid(row=6, column=0, columnspan=2, sticky="ew", pady=(2, 12))

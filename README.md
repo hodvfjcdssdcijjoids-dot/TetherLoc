@@ -38,6 +38,7 @@ After installing, unplug and reconnect the iPhone, unlock it, tap **Trust This C
 When using the source checkout directly, Python 3.10 or newer is also required. When using the packaged installer, Python is bundled into the app build and does not need to be installed by the end user.
 
 For iOS 17 and newer, run the app from an Administrator PowerShell window because the tunnel setup may need elevated network driver access.
+If TetherLoc is opened without Administrator rights, it will stop at an admin-required screen and show the exact PowerShell command to rerun.
 
 ## Run
 

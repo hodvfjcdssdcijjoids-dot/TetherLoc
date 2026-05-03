@@ -13,6 +13,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterable
 
+if platform.system() == "Windows":
+    import ctypes
+
 
 LogSink = Callable[[str], None]
 
@@ -484,6 +487,15 @@ def creation_flags() -> int:
     if platform.system() == "Windows" and hasattr(subprocess, "CREATE_NO_WINDOW"):
         return subprocess.CREATE_NO_WINDOW
     return 0
+
+
+def is_running_as_admin() -> bool:
+    if platform.system() != "Windows":
+        return True
+    try:
+        return bool(ctypes.windll.shell32.IsUserAnAdmin())
+    except Exception:
+        return False
 
 
 def extract_json_array(output: str) -> list[dict]:
