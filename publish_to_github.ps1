@@ -4,6 +4,9 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+if (Get-Variable -Name PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue) {
+    $PSNativeCommandUseErrorActionPreference = $false
+}
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 function Stop-WithMessage {
@@ -95,8 +98,11 @@ else {
 
 $repoFullName = "$login/$RepoName"
 $remoteUrl = "https://github.com/$repoFullName.git"
-& git remote get-url origin *> $null
-if ($LASTEXITCODE -ne 0) {
+$remotes = @(& git remote)
+if ($remotes -contains "origin") {
+    & git remote set-url origin $remoteUrl
+}
+else {
     & $gh repo view $repoFullName *> $null
     if ($LASTEXITCODE -eq 0) {
         & git remote add origin $remoteUrl
