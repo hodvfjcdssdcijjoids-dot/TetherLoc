@@ -44,15 +44,17 @@ For iOS 17 and newer, run the app from an Administrator PowerShell window becaus
 Open PowerShell in this folder:
 
 ```powershell
-.\run.ps1
+powershell -ExecutionPolicy Bypass -File .\run.ps1
 ```
 
 The first run creates a local `.venv`, installs `pymobiledevice3`, and launches the app.
 
+Use the command above if PowerShell says `run.ps1 cannot be loaded because running scripts is disabled on this system`. The bypass only applies to that one launch.
+
 ## Build An EXE
 
 ```powershell
-.\build_windows.ps1
+powershell -ExecutionPolicy Bypass -File .\build_windows.ps1
 ```
 
 The app build will be created at `dist\TetherLoc\TetherLoc.exe`.
@@ -71,13 +73,13 @@ Builder requirements:
 Build the installer:
 
 ```powershell
-.\build_installer.ps1 -Clean
+powershell -ExecutionPolicy Bypass -File .\build_installer.ps1 -Clean
 ```
 
 If WiX is not installed yet and you have the .NET SDK, the script can try to install the WiX CLI:
 
 ```powershell
-.\build_installer.ps1 -Clean -InstallWix
+powershell -ExecutionPolicy Bypass -File .\build_installer.ps1 -Clean -InstallWix
 ```
 
 You can also install WiX manually first:

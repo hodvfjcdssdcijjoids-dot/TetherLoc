@@ -90,7 +90,9 @@ $sourcePaths = @(
 & git add -- $sourcePaths
 & git diff --cached --quiet
 if ($LASTEXITCODE -ne 0) {
-    & git commit -m "Initial TetherLoc app"
+    & git rev-parse --verify HEAD *> $null
+    $commitMessage = if ($LASTEXITCODE -eq 0) { "Update TetherLoc source" } else { "Initial TetherLoc app" }
+    & git commit -m $commitMessage
 }
 else {
     Write-Host "No source changes to commit."
