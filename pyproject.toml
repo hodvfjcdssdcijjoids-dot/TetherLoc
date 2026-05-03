@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tetherloc"
+version = "0.1.0"
+description = "Windows-friendly iOS location simulation wrapper for owned-device app testing."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "GPL-3.0-or-later"
+dependencies = ["pymobiledevice3>=9.12.0,<10", "tkintermapview>=1.29,<2"]
+
+[project.optional-dependencies]
+build = ["pyinstaller>=6.5,<7"]
+
+[project.scripts]
+tetherloc = "ios_geo_spoofer.app:main"
+
+[tool.setuptools.packages.find]
+include = ["ios_geo_spoofer*"]
