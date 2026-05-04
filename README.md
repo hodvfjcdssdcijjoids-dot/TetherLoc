@@ -63,6 +63,11 @@ powershell -ExecutionPolicy Bypass -File .\build_windows.ps1
 The app build will be created at `dist\TetherLoc\TetherLoc.exe`.
 
 Use this if you just want a local executable folder without a setup wizard.
+If an older build crashes with a missing `pytun_pmd3\wintun\bin\amd64\wintun.dll` error, rebuild with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\build_windows.ps1 -Clean
+```
 
 ## Build A Downloadable Installer
 
