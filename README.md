@@ -9,6 +9,7 @@ TetherLoc is a small Windows-friendly desktop wrapper for iOS location simulatio
 - Lists USB-connected iOS devices.
 - Starts with a setup gate that checks Apple drivers, required Python tools, and a trusted USB iPhone before opening the main map.
 - Shows a waiting screen with install/connect steps and an Apple download link when the phone or drivers are missing.
+- Keeps checking the USB phone connection while the app is open and returns to the setup screen if the phone disconnects.
 - Lets you click an OpenStreetMap map to choose a destination.
 - Checks whether the Apple Mobile Device service is available.
 - Runs `pymobiledevice3` setup actions for Developer Mode and DeveloperDiskImage mounting.

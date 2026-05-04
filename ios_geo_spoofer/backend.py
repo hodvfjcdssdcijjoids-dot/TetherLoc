@@ -188,8 +188,8 @@ class PymobiledeviceClient:
             return True, "Apple Mobile Device Service is running."
         return False, "Apple Mobile Device Service is installed but not running."
 
-    def list_devices(self, emit: LogSink | None = None) -> list[Device]:
-        result = self.run(["usbmux", "list"], timeout=45, emit=emit)
+    def list_devices(self, emit: LogSink | None = None, timeout: float = 45) -> list[Device]:
+        result = self.run(["usbmux", "list"], timeout=timeout, emit=emit)
         if not result.ok:
             raise RuntimeError(result.output.strip() or "Unable to list iOS devices.")
         payload = extract_json_array(result.output)

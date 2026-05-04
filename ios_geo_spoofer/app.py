@@ -72,6 +72,8 @@ MAP_LOADING = "#020305"
 LOG_BG = "#0C0D11"
 LOG_FG = "#DCE8EA"
 DARK_MAP_TILE_SERVER = "https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png"
+DEVICE_MONITOR_INTERVAL_MS = 3500
+DEVICE_MONITOR_TIMEOUT_SECONDS = 8.0
 
 
 class RoundedButton(tk.Canvas):
@@ -225,6 +227,9 @@ class TetherLocApp(tk.Tk):
         self.setup_itunes_button = None
         self.main_ready = False
         self.setup_checking = False
+        self.device_monitor_checking = False
+        self.device_monitor_after_id: str | None = None
+        self.device_monitor_generation = 0
         self.developer_mode_prompted_devices: set[str] = set()
         self.developer_mode_prompting = False
         self._warming_map_cache = False
@@ -946,6 +951,7 @@ class TetherLocApp(tk.Tk):
         self._build_ui()
         self._apply_devices(devices)
         self._set_status("Ready")
+        self._start_device_monitor()
 
     def _clear_root(self) -> None:
         for child in self.winfo_children():
@@ -970,6 +976,95 @@ class TetherLocApp(tk.Tk):
         self.destination_marker = None
         self.start_marker = None
         self.route_path = None
+
+    def _start_device_monitor(self) -> None:
+        self.device_monitor_generation += 1
+        self.device_monitor_checking = False
+        self._schedule_device_monitor()
+
+    def _stop_device_monitor(self) -> None:
+        self.device_monitor_generation += 1
+        self.device_monitor_checking = False
+        if self.device_monitor_after_id is not None:
+            try:
+                self.after_cancel(self.device_monitor_after_id)
+            except tk.TclError:
+                pass
+            self.device_monitor_after_id = None
+
+    def _schedule_device_monitor(self, delay_ms: int = DEVICE_MONITOR_INTERVAL_MS) -> None:
+        if not self.main_ready:
+            return
+        if self.device_monitor_after_id is not None:
+            try:
+                self.after_cancel(self.device_monitor_after_id)
+            except tk.TclError:
+                pass
+        self.device_monitor_after_id = self.after(delay_ms, self._run_device_monitor_check)
+
+    def _run_device_monitor_check(self) -> None:
+        self.device_monitor_after_id = None
+        if not self.main_ready or self.device_monitor_checking:
+            return
+        self.device_monitor_checking = True
+        generation = self.device_monitor_generation
+        threading.Thread(
+            target=lambda: self._device_monitor_check(generation),
+            name="device-monitor",
+            daemon=True,
+        ).start()
+
+    def _device_monitor_check(self, generation: int) -> None:
+        devices: list[Device] = []
+        device_error = ""
+        try:
+            devices = self.client.list_devices(timeout=DEVICE_MONITOR_TIMEOUT_SECONDS)
+        except Exception as exc:
+            device_error = clean_command_output(str(exc)) or "Device scan failed."
+
+        self.after(0, lambda: self._apply_device_monitor_result(generation, devices, device_error))
+
+    def _apply_device_monitor_result(self, generation: int, devices: list[Device], device_error: str) -> None:
+        if generation != self.device_monitor_generation:
+            return
+        self.device_monitor_checking = False
+        if not self.main_ready:
+            return
+
+        if devices:
+            self._apply_devices(devices, announce=False)
+            self._schedule_device_monitor()
+            return
+
+        self._return_to_setup_after_disconnect(device_error)
+
+    def _return_to_setup_after_disconnect(self, device_error: str = "") -> None:
+        if not self.main_ready:
+            return
+        self._stop_device_monitor()
+        self.main_ready = False
+        self.devices = []
+        self.selected_device.set("")
+        self.developer_mode_prompted_devices.clear()
+        try:
+            self.client.stop_location_hold()
+            self.client.stop_tunnel()
+        except Exception as exc:
+            self._log(f"Stopped after disconnect with warning: {clean_command_output(str(exc))}")
+
+        detail = "The iPhone disconnected. Reconnect it, unlock it, and tap Trust This Computer to continue."
+        self._clear_root()
+        self._show_setup_screen(
+            "Waiting for iPhone",
+            detail,
+            checking=False,
+            driver_ok=True,
+            pymobiledevice_ok=True,
+            device_count=0,
+            device_error=device_error,
+        )
+        self._set_connection_state(False)
+        self.after(1000, self._run_setup_gate_check)
 
     @staticmethod
     def _open_apple_devices_page() -> None:
@@ -1842,7 +1937,7 @@ class TetherLocApp(tk.Tk):
         devices = self.client.list_devices(emit=self._log)
         self.after(0, lambda: self._apply_devices(devices))
 
-    def _apply_devices(self, devices: list[Device]) -> None:
+    def _apply_devices(self, devices: list[Device], announce: bool = True) -> None:
         self.devices = devices
         values = [device.display_name for device in devices]
         if self.device_combo is not None:
@@ -1851,22 +1946,16 @@ class TetherLocApp(tk.Tk):
             self.selected_device.set(values[0])
         if devices:
             self._set_connection_state(True)
-            self._set_status(f"{len(devices)} device(s) found")
+            if announce:
+                self._set_status(f"{len(devices)} device(s) found")
             self._maybe_prompt_developer_mode(devices)
         else:
             self._set_connection_state(False)
-            self._set_status("No device found")
+            if announce:
+                self._set_status("No device found")
             self.developer_mode_prompted_devices.clear()
             if self.main_ready:
-                self.main_ready = False
-                self._show_setup_screen(
-                    "Waiting for iPhone",
-                    "The menu will reopen when your iPhone is connected and trusted.",
-                    driver_ok=True,
-                    pymobiledevice_ok=True,
-                    device_count=0,
-                )
-                self.after(3000, self._run_setup_gate_check)
+                self._return_to_setup_after_disconnect()
 
     def _maybe_prompt_developer_mode(self, devices: list[Device]) -> None:
         if self.developer_mode_prompting:
@@ -2256,6 +2345,7 @@ class TetherLocApp(tk.Tk):
         self.after(100, self._drain_log_queue)
 
     def _on_close(self) -> None:
+        self._stop_device_monitor()
         self.client.close()
         self.destroy()
 
