@@ -94,6 +94,10 @@ def checked_run(args: list[str], timeout: float = 90, verbose: bool = False) -> 
     return output
 
 
+def dvt_tunnel_args(device: Device) -> list[str]:
+    return ["--tunnel", device.identifier or ""]
+
+
 def doctor(verbose: bool = False) -> int:
     print(f"Working folder: {os.getcwd()}")
     print(f"Python: {sys.executable}")
@@ -101,7 +105,7 @@ def doctor(verbose: bool = False) -> int:
         print(f"{path}: {'OK' if os.path.exists(path) else 'missing'}")
 
     service = subprocess.run(
-        ["bash", "-lc", "service usbmuxd status || true"],
+        ["bash", "-lc", "if command -v service >/dev/null 2>&1; then service usbmuxd status || true; else echo 'service command not available'; fi"],
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -267,6 +271,15 @@ def clear_location(device: Device, verbose: bool = False) -> None:
     major = device.ios_major
     if major is not None and major >= 17:
         mount_developer_image(device, verbose=verbose)
+        direct = run_pmobile(
+            ["developer", "dvt", "simulate-location", "clear", *dvt_tunnel_args(device)],
+            timeout=90,
+            verbose=verbose,
+        )
+        if direct.returncode == 0:
+            return
+        if verbose:
+            print("Direct --tunnel clear failed; trying manual tunnel fallback.")
         tunnel_proc: subprocess.Popen[str] | None = None
         try:
             tunnel, tunnel_proc = start_tunnel(device, verbose=verbose)
@@ -290,6 +303,7 @@ def set_location(device: Device, latitude: float, longitude: float, verbose: boo
         mount_developer_image(device, verbose=verbose)
         tunnel_proc: subprocess.Popen[str] | None = None
         hold_proc: subprocess.Popen[str] | None = None
+        tunnel: TunnelInfo | None = None
         stopping = False
 
         def request_stop(_signum: int, _frame: object) -> None:
@@ -299,16 +313,13 @@ def set_location(device: Device, latitude: float, longitude: float, verbose: boo
         old_sigint = signal.signal(signal.SIGINT, request_stop)
         old_sigterm = signal.signal(signal.SIGTERM, request_stop)
         try:
-            tunnel, tunnel_proc = start_tunnel(device, verbose=verbose)
             hold_proc = popen_pmobile(
                 [
                     "developer",
                     "dvt",
                     "simulate-location",
                     "set",
-                    "--rsd",
-                    tunnel.host,
-                    str(tunnel.port),
+                    *dvt_tunnel_args(device),
                     "--",
                     lat,
                     lon,
@@ -319,17 +330,49 @@ def set_location(device: Device, latitude: float, longitude: float, verbose: boo
             time.sleep(2.5)
             if hold_proc.poll() is not None:
                 output = hold_proc.stdout.read() if hold_proc.stdout else ""
+                stop_process(hold_proc, send_enter=True)
+                hold_proc = None
+                if verbose:
+                    print(clean_output(output) or "Direct --tunnel set exited; trying manual tunnel fallback.")
+                tunnel, tunnel_proc = start_tunnel(device, verbose=verbose, timeout=30)
+                hold_proc = popen_pmobile(
+                    [
+                        "developer",
+                        "dvt",
+                        "simulate-location",
+                        "set",
+                        "--rsd",
+                        tunnel.host,
+                        str(tunnel.port),
+                        "--",
+                        lat,
+                        lon,
+                    ],
+                    verbose=verbose,
+                    stdin=True,
+                )
+                time.sleep(2.5)
+
+            if hold_proc.poll() is not None:
+                output = hold_proc.stdout.read() if hold_proc.stdout else ""
                 raise RuntimeError(clean_output(output) or "Location command exited before holding the location.")
             print(f"Location active at {lat}, {lon}. Press Ctrl+C to clear and exit.")
             while not stopping:
                 time.sleep(0.2)
             print("\nClearing location...")
             stop_process(hold_proc, send_enter=True)
-            checked_run(
-                ["developer", "dvt", "simulate-location", "clear", "--rsd", tunnel.host, str(tunnel.port)],
-                timeout=90,
-                verbose=verbose,
-            )
+            hold_proc = None
+            clear_args = [
+                "developer",
+                "dvt",
+                "simulate-location",
+                "clear",
+            ]
+            if tunnel is None:
+                clear_args.extend(dvt_tunnel_args(device))
+            else:
+                clear_args.extend(["--rsd", tunnel.host, str(tunnel.port)])
+            checked_run(clear_args, timeout=90, verbose=verbose)
             print("Location cleared.")
         finally:
             signal.signal(signal.SIGINT, old_sigint)
@@ -393,6 +436,8 @@ def main() -> int:
             return doctor(verbose=args.verbose)
 
         device = select_device(args.udid, verbose=args.verbose)
+        if args.command in {"set", "clear"} and device.ios_major is not None and device.ios_major >= 17 and os.geteuid() != 0:
+            raise RuntimeError("iOS 17+ location commands need root on Linux. Rerun with: sudo bash run.sh " + args.command)
         if args.command == "devmode":
             prompt_developer_mode(device, verbose=args.verbose)
         elif args.command == "mount":

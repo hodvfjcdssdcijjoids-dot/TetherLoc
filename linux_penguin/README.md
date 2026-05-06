@@ -45,7 +45,7 @@ bash run.sh mount
 Set a simulated location:
 
 ```bash
-bash run.sh set 37.3349 -122.0090
+sudo bash run.sh set 37.3349 -122.0090
 ```
 
 On iOS 17 and newer, keep that terminal open while the simulated location is active. Press `Ctrl+C` to clear and exit.
@@ -53,13 +53,13 @@ On iOS 17 and newer, keep that terminal open while the simulated location is act
 Clear manually:
 
 ```bash
-bash run.sh clear
+sudo bash run.sh clear
 ```
 
 If more than one phone is connected, use:
 
 ```bash
-bash run.sh --udid YOUR_UDID set 37.3349 -122.0090
+sudo bash run.sh --udid YOUR_UDID set 37.3349 -122.0090
 ```
 
 For command output while debugging:
