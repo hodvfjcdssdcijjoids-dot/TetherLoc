@@ -48,7 +48,7 @@ Set a simulated location:
 sudo bash run.sh set 37.3349 -122.0090
 ```
 
-On iOS 17 and newer, keep that terminal open while the simulated location is active. Press `Ctrl+C` to clear and exit.
+On iOS 17 and newer, keep that terminal open while the simulated location is active. The script starts `pymobiledevice3 remote tunneld` automatically. Press `Ctrl+C` to clear and exit.
 
 Clear manually:
 

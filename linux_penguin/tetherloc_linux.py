@@ -267,19 +267,37 @@ def start_tunnel(device: Device, verbose: bool = False, timeout: float = 75) -> 
     raise RuntimeError(last_output or "Tunnel did not publish RSD connection details.")
 
 
+def start_tunneld(verbose: bool = False) -> subprocess.Popen[str]:
+    proc = popen_pmobile(["remote", "tunneld"], verbose=verbose, stdin=False)
+    time.sleep(4.0)
+    if proc.poll() is not None:
+        output = proc.stdout.read() if proc.stdout else ""
+        raise RuntimeError(clean_output(output) or "tunneld exited before it was ready.")
+    if verbose:
+        print("tunneld is running.")
+    return proc
+
+
 def clear_location(device: Device, verbose: bool = False) -> None:
     major = device.ios_major
     if major is not None and major >= 17:
         mount_developer_image(device, verbose=verbose)
-        direct = run_pmobile(
-            ["developer", "dvt", "simulate-location", "clear", *dvt_tunnel_args(device)],
-            timeout=90,
-            verbose=verbose,
-        )
-        if direct.returncode == 0:
+        tunneld_proc: subprocess.Popen[str] | None = None
+        try:
+            tunneld_proc = start_tunneld(verbose=verbose)
+            checked_run(
+                ["developer", "dvt", "simulate-location", "clear", *dvt_tunnel_args(device)],
+                timeout=90,
+                verbose=verbose,
+            )
             return
-        if verbose:
-            print("Direct --tunnel clear failed; trying manual tunnel fallback.")
+        except Exception as exc:
+            if verbose:
+                print(f"tunneld clear failed: {clean_output(str(exc))}")
+                print("Trying manual tunnel fallback.")
+        finally:
+            stop_process(tunneld_proc)
+
         tunnel_proc: subprocess.Popen[str] | None = None
         try:
             tunnel, tunnel_proc = start_tunnel(device, verbose=verbose)
@@ -301,6 +319,7 @@ def set_location(device: Device, latitude: float, longitude: float, verbose: boo
     major = device.ios_major
     if major is not None and major >= 17:
         mount_developer_image(device, verbose=verbose)
+        tunneld_proc: subprocess.Popen[str] | None = None
         tunnel_proc: subprocess.Popen[str] | None = None
         hold_proc: subprocess.Popen[str] | None = None
         tunnel: TunnelInfo | None = None
@@ -313,6 +332,7 @@ def set_location(device: Device, latitude: float, longitude: float, verbose: boo
         old_sigint = signal.signal(signal.SIGINT, request_stop)
         old_sigterm = signal.signal(signal.SIGTERM, request_stop)
         try:
+            tunneld_proc = start_tunneld(verbose=verbose)
             hold_proc = popen_pmobile(
                 [
                     "developer",
@@ -332,8 +352,10 @@ def set_location(device: Device, latitude: float, longitude: float, verbose: boo
                 output = hold_proc.stdout.read() if hold_proc.stdout else ""
                 stop_process(hold_proc, send_enter=True)
                 hold_proc = None
+                stop_process(tunneld_proc)
+                tunneld_proc = None
                 if verbose:
-                    print(clean_output(output) or "Direct --tunnel set exited; trying manual tunnel fallback.")
+                    print(clean_output(output) or "tunneld set exited; trying manual tunnel fallback.")
                 tunnel, tunnel_proc = start_tunnel(device, verbose=verbose, timeout=30)
                 hold_proc = popen_pmobile(
                     [
@@ -379,6 +401,7 @@ def set_location(device: Device, latitude: float, longitude: float, verbose: boo
             signal.signal(signal.SIGTERM, old_sigterm)
             stop_process(hold_proc, send_enter=True)
             stop_process(tunnel_proc)
+            stop_process(tunneld_proc)
         return
 
     checked_run(
